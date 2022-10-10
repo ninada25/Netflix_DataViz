@@ -1,0 +1,123 @@
+---
+title: "Netflix Data Analysis"
+author: "Nina Austria"
+date: "9/25/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE) # hiding all warnings and messages
+```
+
+### Reading in Our Dataset:
+```{r}
+library(readxl)
+
+netflix = read.csv("netflix_titles.csv")
+```
+
+### Installing Libraries:
+```{r}
+library(tidyverse)
+library(readr)
+library(ggplot2)
+library(ggpubr)
+library(dplyr)
+library(naniar)
+library(forcats)
+library(wordcloud)
+library(tm)
+library(SnowballC)
+library(RColorBrewer)
+library(tidytext)
+
+# glimpse(netflix)
+# summary(netflix)
+```
+
+### Going through dataset and looking for any inconsistencies -- are there missing values, weird capitalizations, inconsistent units?
+Want to separate the 'date_added' var into 2 columns: month/day and year:
+```{r}
+netflix = netflix %>% separate(date_added, c("date_added", "year_added"), sep = ",") # use arrow pointing down, next to green arrow to undo the run
+```
+
+Want to separate the 'listed_in' var into 3 columns:
+```{r}
+netflix = netflix %>% separate(listed_in, c("Category1", "Category2", "Category3"), sep = ",") 
+```
+
+### Country Column Analysis
+Want to convert blank spaces to NAs and count the number of missing values in the variable 'country':
+```{r}
+netflix = netflix %>% mutate_all(na_if, "")
+
+netflix %>% count(is.na(netflix$country), sort = TRUE)
+
+country <- drop_na(netflix, country)
+```
+
+```{r}
+country %>% group_by(country) %>% count(country, type) %>% arrange((desc(n))) %>% head(25) # count(country,type) means there will be sep rows for United States - Movie and United States - TV Show
+```
+
+# Data Visualization
+
+### Netflix Movies and TV Shows Over the Years:
+```{r}
+ggplot(data = netflix, mapping = aes(x = release_year, fill = type)) +
+  geom_histogram(color = "black", binwidth = 2) + 
+  labs(title = "Release by Year")
+```
+
+See how many values in country column are NA (missing) and drop the missing values, save in new dataset:
+```{r}
+netflix %>% count(is.na(country), sort = TRUE)
+
+country_release <- drop_na(netflix, country)
+
+country_release %>% 
+  count(country, sort = TRUE) %>% 
+  group_by(country) %>%
+  head(25) %>% 
+  ggplot(mapping = aes(x = reorder(country, n), y = n, fill = country)) + 
+  geom_col(show.legend = FALSE) + 
+  labs(x = "Sum of Movies & TV Shows Frequency", y = "Movies and TV Shows Released", title = "Top 25 Countries on Netflix") + 
+  coord_flip() + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) + # he just copied and pasted this from somewhere 
+  geom_label(mapping = aes(label = n), show.legend = FALSE) + 
+  scale_y_continuous(expand = c(0,0), limits = c(0,3000))
+```
+
+These next two visualizations are from Kaggle (General tip: if we want to see nice visualizations for code, go to Kaggle -> Netflix Dataset -> Code -> filter by R -> find visuals/tables you find interesting and want to copy + paste into your project):
+
+### Graph: Rating by Type
+```{r}
+netflix %>%
+ filter(!(rating %in% c("74 min", "84 min", "66 min", ""))) %>%
+ ggplot() +
+  aes(x = rating, fill = rating) +
+  geom_bar() +
+  scale_fill_hue(direction = 1) +
+  labs(x = "Rating", y = "Count", title = "Rating by Type") +
+  theme_minimal() +
+  facet_wrap(vars(type)) +theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+### Word Cloud!
+```{r}
+desc_words_m <- netflix %>% select(type, show_id, description) %>%
+  filter(type == "Movie") %>% 
+    unnest_tokens(word, description) %>%
+    anti_join(stop_words)
+count_word <- desc_words_m %>%
+   count(word, sort = TRUE)
+wordcloud(words = count_word$word,  
+          freq = count_word$n, 
+          min.freq = 50,  
+          max.words = nrow(count_word), 
+          random.order = FALSE,  
+          rot.per = 0.1,  
+          colors = brewer.pal(8, "Dark2"))
+```
